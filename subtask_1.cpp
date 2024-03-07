@@ -59,11 +59,11 @@ float** convolutionWithPadding(float** input, int n, float** kernel, int k_size)
     int paddedSize = n + 2 * padding;
 
     float** paddedInput = create(paddedSize);
-    
-    for (int i = 0; i < paddedSize; ++i)paddedInput[i][0] = 0.0;
-    for (int i = 0; i < paddedSize; ++i)paddedInput[0][i] = 0.0;
-    for (int i = 0; i < paddedSize; ++i)paddedInput[i][paddedSize-1] = 0.0;
-    for (int i = 0; i < paddedSize; ++i)paddedInput[paddedSize-1][i] = 0.0;
+    for(int i=0;i<paddedSize;i++){
+        for(int j=0;j<paddedSize;j++){
+            paddedInput[i][j]=0.0;
+        }
+    }
 
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
@@ -155,8 +155,6 @@ void sigmoid(float* input, int size) {
 
 
 int main(int argc, const char * argv[]){
-
-
     int n= stoi(argv[1]);
     int k_size= stoi(argv[2]);
     std::random_device rd;
@@ -180,8 +178,6 @@ int main(int argc, const char * argv[]){
         }
     }
 
-    
-
     float** conv = convolution(input,n,kernal,k_size);
     float** conv_pad = convolutionWithPadding(input,n,kernal,k_size);
     float** relu_matrix = relu(input,n);
@@ -198,11 +194,6 @@ int main(int argc, const char * argv[]){
     softmax(soft,n);
     sigmoid(sig,n);
 
-
-
-
-
-
     display(conv,n-k_size+1);
     cout<<endl;
     display(conv_pad,n);
@@ -218,7 +209,6 @@ int main(int argc, const char * argv[]){
     displayVector(soft,n);
     cout<<endl;
     displayVector(sig,n);
-
 
     return 0;
 }
