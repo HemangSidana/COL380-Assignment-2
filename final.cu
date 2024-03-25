@@ -1,79 +1,132 @@
 #include <iostream>
 #include <fstream>
-#include <math.h>
+#include <vector>
+#include <algorithm>
+#include <cmath>
 using namespace std;
 
-__global__ void Conv_1(float input[28][28], float output[20][24][24], float kernel[20][5][5], float bias[20]){
-    int channel= blockIdx.x;
-    int a= threadIdx.x; int b= threadIdx.y;
-    float sum=0.0;
-    for(int i=0;i<5;i++){
-        for(int j=0;j<5;j++){
-            int x=i+a; int y=j+b;
-            sum+=kernel[channel][i][j]*input[x][y];
+__global__ void Conv_1(float* input, float* output, float* kernel, float* bias) {
+    int channel = blockIdx.x;
+    int a = threadIdx.x; 
+    int b = threadIdx.y;
+    float sum = 0.0;
+    int input_size = 28;
+    int kernel_size = 5;
+    int output_size = 24;
+    
+    for(int i = 0; i < kernel_size; i++) {
+        for(int j = 0; j < kernel_size; j++) {
+            int x = i + a; 
+            int y = j + b;
+            sum += kernel[(channel * kernel_size * kernel_size) + (i * kernel_size) + j] * input[(channel * input_size * input_size) + (x * input_size) + y];
         }
     }
-    sum+=bias[channel];
-    output[channel][a][b]=sum;
+    sum += bias[channel];
+    output[(channel * output_size * output_size) + (a * output_size) + b] = sum;
 }
 
-__global__ void Pool_1(float input[20][24][24], float output[20][12][12]){
-    int channel= blockIdx.x;
-    int a= threadIdx.x; int b= threadIdx.y;
-    output[channel][a][b]= fmax(fmax(fmax(input[channel][2*a][2*b],input[channel][2*a+1][2*b]),input[channel][2*a][2*b+1]),input[channel][2*a+1][2*b+1]);
+__global__ void Pool_1(float* input, float* output) {
+    int channel = blockIdx.x;
+    int a = threadIdx.x;
+    int b = threadIdx.y;
+    int input_size = 24;
+    int output_size = 12;
+    int input_channel_size = input_size * input_size;
+    int output_channel_size = output_size * output_size;
+
+    float max_val = -INFINITY;
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            float val = input[(channel * input_channel_size) + ((2 * a + i) * input_size) + (2 * b + j)];
+            max_val = fmaxf(max_val, val);
+        }
+    }
+    output[(channel * output_channel_size) + (a * output_size) + b] = max_val;
 }
 
-__global__ void Conv_2(float input[20][12][12], float output[50][8][8], float kernel[50][5][5][20], float bias[50]){
-    int chx= blockIdx.x; 
-    int thx= threadIdx.x; int thy= threadIdx.y;
-    float sum=0.0;
-    for(int c=0; c<20; c++){
-        for(int i=0;i<5;i++){
-            for(int j=0;j<5;j++){
-                int x=i+thx; int y=j+thy;
-                sum+=kernel[chx][i][j][c]*input[c][x][y];
+__global__ void Conv_2(float* input, float* output, float* kernel, float* bias) {
+    int chx = blockIdx.x;
+    int thx = threadIdx.x;
+    int thy = threadIdx.y;
+    int input_size = 12;
+    int output_size = 8;
+    int kernel_size = 5;
+    int input_channel_size = input_size * input_size;
+    int output_channel_size = output_size * output_size;
+    int kernel_channel_size = kernel_size * kernel_size;
+
+    float sum = 0.0;
+    for (int c = 0; c < 20; ++c) {
+        for (int i = 0; i < 5; ++i) {
+            for (int j = 0; j < 5; ++j) {
+                int x = i + thx;
+                int y = j + thy;
+                float input_val = input[(c * input_channel_size) + (x * input_size) + y];
+                float kernel_val = kernel[(chx * 20 * kernel_channel_size) + (c * kernel_channel_size) + (i * kernel_size) + j];
+                sum += kernel_val * input_val;
             }
         }
     }
-    sum+=bias[chx];
-    output[chx][thx][thy]=sum;
+    sum += bias[chx];
+    output[(chx * output_channel_size) + (thx * output_size) + thy] = sum;
 }
 
-__global__ void Pool_2(float input[50][8][8], float output[50][4][4]){
-    int channel= blockIdx.x;
-    int a= threadIdx.x; int b= threadIdx.y;
-    output[channel][a][b]= fmax(fmax(fmax(input[channel][2*a][2*b],input[channel][2*a+1][2*b]),input[channel][2*a][2*b+1]),input[channel][2*a+1][2*b+1]);
+
+__global__ void Pool_2(float* input, float* output) {
+    int channel = blockIdx.x;
+    int a = threadIdx.x;
+    int b = threadIdx.y;
+    int input_size = 8;
+    int output_size = 4;
+    int input_channel_size = input_size * input_size;
+    int output_channel_size = output_size * output_size;
+
+    float max_val = input[(channel * input_channel_size) + (2 * a * input_size) + (2 * b)];
+    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b)]);
+    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a) * input_size + (2 * b + 1)]);
+    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b + 1)]);
+
+    output[(channel * output_channel_size) + (a * output_size) + b] = max_val;
 }
 
-__global__ void FC_1(float input[50][4][4], float output[500], float kernel[500][4][4][50], float bias[500]){
-    int idx= threadIdx.x;
-    float sum=0.0;
-    for (int c = 0; c < 50; ++c) {
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                sum += kernel[idx][i][j][c] * input[c][i][j];
+
+__global__ void FC_1(float* input, float* output, float* kernel, float* bias) {
+    int idx = threadIdx.x;
+    float sum = 0.0;
+    int input_size = 4;
+    int kernel_channels = 50;
+    for (int c = 0; c < kernel_channels; ++c) {
+        for (int i = 0; i < input_size; ++i) {
+            for (int j = 0; j < input_size; ++j) {
+                int input_index = (c * input_size * input_size) + (i * input_size) + j;
+                int kernel_index = (idx * kernel_channels * input_size * input_size) + (i * input_size * kernel_channels) + (j * kernel_channels) + c;
+                sum += kernel[kernel_index] * input[input_index];
             }
         }
     }
     sum += bias[idx];
-    output[idx] = max(0.0,sum);
+    output[idx] = fmax(0.0, sum);
 }
 
 
-__global__ void FC_2(float input[500], float output[10], float kernel[10][500], float bias[10]){
-    int idx= threadIdx.x;
-    float sum=0.0;
-    for(int i=0;i<500;i++){
-        sum+=kernel[idx][i]*input[i];
+__global__ void FC_2(float* input, float* output, float* kernel, float* bias) {
+    int idx = threadIdx.x;
+    float sum = 0.0;
+    int input_size = 500;
+    for (int i = 0; i < input_size; ++i) {
+        int kernel_index = (idx * input_size) + i;
+        sum += kernel[kernel_index] * input[i];
     }
-    sum+=bias[idx];
-    output[idx]=sum;
+    sum += bias[idx];
+    output[idx] = sum;
 }
 
-__global__ void softmax(float input[10]){
+
+__global__ void softmax(float* input){
     float sum=0.0;
     for(int i=0;i<10;i++){
         sum+= exp(input[i]);
+        input[i]=exp(input[i]);
     }
     for(int i=0;i<10;i++){
         input[i]/=sum;
@@ -99,7 +152,7 @@ int main(){
     float soft_output[10];
 
 
-    ifstream input_file("image_float/1.txt");
+    ifstream input_file("check.txt");
     if(!input_file.is_open()) {
         cerr << "Error: Unable to open weights file." << endl;
         return 1;
@@ -234,7 +287,8 @@ int main(){
     fc2_file.close();
 
 
-    float device_conv1_input[28][28], device_conv1_output[20][24][24], device_conv1_kernel[20][5][5], device_conv1_bias[20];
+    // float device_conv1_input[28][28], device_conv1_output[20][24][24], device_conv1_kernel[20][5][5], device_conv1_bias[20];
+    float *device_conv1_input, *device_conv1_output, *device_conv1_kernel, *device_conv1_bias;
     cudaMalloc((void**)&device_conv1_input, 28*28*sizeof(float));
     cudaMalloc((void**)&device_conv1_output, 20*24*24*sizeof(float));
     cudaMalloc((void**)&device_conv1_kernel, 20*5*5*sizeof(float));
@@ -251,7 +305,8 @@ int main(){
 
 
 
-    float device_pool1_input[20][24][24], device_pool1_output[20][12][12];
+    // float device_pool1_input[20][24][24], device_pool1_output[20][12][12];
+    float *device_pool1_input, *device_pool1_output;
     cudaMalloc((void**)&device_pool1_input, 20*24*24*sizeof(float));
     cudaMalloc((void**)&device_pool1_output, 20*12*12*sizeof(float));
     cudaMemcpy(device_pool1_input, conv1_output, 20*24*24*sizeof(float), cudaMemcpyHostToDevice);
@@ -262,7 +317,8 @@ int main(){
 
 
 
-    float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][5][5][20], device_conv2_bias[50];
+    // float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][5][5][20], device_conv2_bias[50];
+    float *device_conv2_input, *device_conv2_output, *device_conv2_kernel, *device_conv2_bias;
     cudaMalloc((void**)&device_conv2_input, 20*12*12*sizeof(float));
     cudaMalloc((void**)&device_conv2_output, 50*8*8*sizeof(float));
     cudaMalloc((void**)&device_conv2_kernel, 50*5*5*20*sizeof(float));
@@ -279,7 +335,8 @@ int main(){
 
 
 
-    float device_pool2_input[50][8][8], device_pool2_output[50][4][4];
+    // float device_pool2_input[50][8][8], device_pool2_output[50][4][4];
+    float *device_pool2_input, *device_pool2_output;
     cudaMalloc((void**)&device_pool2_input, 50*8*8*sizeof(float));
     cudaMalloc((void**)&device_pool2_output, 50*4*4*sizeof(float));
     cudaMemcpy(device_pool2_input, device_conv2_output, 50*8*8*sizeof(float), cudaMemcpyHostToDevice);
@@ -290,7 +347,8 @@ int main(){
 
 
 
-    float device_fc1_input[50][4][4], device_fc1_output[500], device_fc1_kernel[500][4][4][50], device_fc1_bias[50];
+    // float device_fc1_input[50][4][4], device_fc1_output[500], device_fc1_kernel[500][4][4][50], device_fc1_bias[50];
+    float *device_fc1_input, *device_fc1_output, *device_fc1_kernel, *device_fc1_bias;
     cudaMalloc((void**)&device_fc1_input, 50*4*4*sizeof(float));
     cudaMalloc((void**)&device_fc1_output, 500*sizeof(float));
     cudaMalloc((void**)&device_fc1_kernel, 500*4*4*50*sizeof(float));
@@ -307,7 +365,8 @@ int main(){
 
 
 
-    float device_fc2_input[500], device_fc2_output[10], device_fc2_kernel[10][500], device_fc2_bias[10];
+    // float device_fc2_input[500], device_fc2_output[10], device_fc2_kernel[10][500], device_fc2_bias[10];
+    float *device_fc2_input, *device_fc2_output, *device_fc2_kernel, *device_fc2_bias;
     cudaMalloc((void**)&device_fc2_input, 500*sizeof(float));
     cudaMalloc((void**)&device_fc2_output, 10*sizeof(float));
     cudaMalloc((void**)&device_fc2_kernel, 10*500*sizeof(float));
@@ -324,17 +383,27 @@ int main(){
 
 
 
-    float device_soft_input[10], device_soft_output[10];
+    // float device_soft_input[10], device_soft_output[10];
+    float *device_soft_input;
     cudaMalloc((void**)&device_soft_input, 10*sizeof(float));
-    cudaMalloc((void**)&device_soft_output, 10*sizeof(float));
 
     cudaMemcpy(device_soft_input, fc2_output, 10*sizeof(float), cudaMemcpyHostToDevice);
     dim3 soft_block(1,1,1); dim3 soft_grid(1,1,1); 
     softmax<<<soft_grid, soft_block>>>(device_soft_input);
     cudaDeviceSynchronize();
-    cudaMemcpy(soft_output, device_soft_output, 10*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(soft_output, device_soft_input, 10*sizeof(float), cudaMemcpyDeviceToHost);
 
-    for(int i=0;i<10;i++){
-        cout<<soft_output[i]<<endl;
+    // for(int i=0;i<10;i++){
+    //     cout<<soft_output[i]<<endl;
+    // }
+
+    vector<pair<float, int> > indexed_values;
+
+    for (int i = 0; i < 10; ++i) {
+        indexed_values.push_back(make_pair(soft_output[i],i+1));
     }
+    for (int i = 0; i < 5; ++i) {
+        cout << indexed_values[i].first << " class " << indexed_values[i].second << endl;
+    }
+
 }
