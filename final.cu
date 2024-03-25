@@ -402,6 +402,7 @@ int main(){
     for (int i = 0; i < 10; ++i) {
         indexed_values.push_back(make_pair(soft_output[i],i+1));
     }
+    sort(indexed_values.begin(),indexed_values.end());
     for (int i = 0; i < 5; ++i) {
         cout << indexed_values[i].first << " class " << indexed_values[i].second << endl;
     }
