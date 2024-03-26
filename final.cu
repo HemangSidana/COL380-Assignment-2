@@ -95,15 +95,12 @@ __global__ void FC_1(float* input, float* output, float* kernel, float* bias) {
     float sum = 0.0;
     int input_size = 4;
     int kernel_channels = 50;
-    for (int c = 0; c < kernel_channels; ++c) {
-        for (int i = 0; i < input_size; ++i) {
-            for (int j = 0; j < input_size; ++j) {
-                int input_index = (c * input_size * input_size) + (i * input_size) + j;
-                int kernel_index = (idx * kernel_channels * input_size * input_size) + (i * input_size * kernel_channels) + (j * kernel_channels) + c;
-                sum += kernel[kernel_index] * input[input_index];
-            }
-        }
+    int total_inputs = input_size * input_size * kernel_channels;
+    
+    for (int i = 0; i < total_inputs; ++i) {
+        sum += kernel[idx * total_inputs + i] * input[i];
     }
+    
     sum += bias[idx];
     output[idx] = fmax(0.0, sum);
 }
