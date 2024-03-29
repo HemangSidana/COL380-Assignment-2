@@ -18,10 +18,12 @@ __global__ void Conv_1(float* input, float* output, float* kernel, float* bias) 
         for(int j = 0; j < kernel_size; j++) {
             int x = i + a; 
             int y = j + b;
-            sum += kernel[(channel * kernel_size * kernel_size) + (i * kernel_size) + j] * input[(channel * input_size * input_size) + (x * input_size) + y];
+            // sum += kernel[channel][i][j]* input[x][y]
+            sum += kernel[(channel * kernel_size * kernel_size) + (i * kernel_size) + j] * input[(x * input_size) + y];
         }
     }
     sum += bias[channel];
+    // output[channel][a][b] = sum
     output[(channel * output_size * output_size) + (a * output_size) + b] = sum;
 }
 
@@ -34,13 +36,15 @@ __global__ void Pool_1(float* input, float* output) {
     int input_channel_size = input_size * input_size;
     int output_channel_size = output_size * output_size;
 
-    float max_val = -INFINITY;
+    float max_val = input[(channel * input_channel_size) + ((2 * a) * input_size) + (2 * b)];
     for (int i = 0; i < 2; ++i) {
         for (int j = 0; j < 2; ++j) {
+            // val= input[channel][2*a+i][2*b+j]
             float val = input[(channel * input_channel_size) + ((2 * a + i) * input_size) + (2 * b + j)];
             max_val = fmaxf(max_val, val);
         }
     }
+    // output[channel][a][b]= max_val
     output[(channel * output_channel_size) + (a * output_size) + b] = max_val;
 }
 
@@ -68,6 +72,7 @@ __global__ void Conv_2(float* input, float* output, float* kernel, float* bias) 
         }
     }
     sum += bias[chx];
+    // output[chx][thx][thy]= sum
     output[(chx * output_channel_size) + (thx * output_size) + thy] = sum;
 }
 
@@ -82,10 +87,11 @@ __global__ void Pool_2(float* input, float* output) {
     int output_channel_size = output_size * output_size;
 
     float max_val = input[(channel * input_channel_size) + (2 * a * input_size) + (2 * b)];
-    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b)]);
-    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a) * input_size + (2 * b + 1)]);
-    max_val = fmax(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b + 1)]);
+    max_val = fmaxf(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b)]);
+    max_val = fmaxf(max_val, input[(channel * input_channel_size) + (2 * a) * input_size + (2 * b + 1)]);
+    max_val = fmaxf(max_val, input[(channel * input_channel_size) + (2 * a + 1) * input_size + (2 * b + 1)]);
 
+    // output[channel][a][b]= max_val
     output[(channel * output_channel_size) + (a * output_size) + b] = max_val;
 }
 
@@ -95,14 +101,18 @@ __global__ void FC_1(float* input, float* output, float* kernel, float* bias) {
     float sum = 0.0;
     int input_size = 4;
     int kernel_channels = 50;
-    int total_inputs = input_size * input_size * kernel_channels;
-    
-    for (int i = 0; i < total_inputs; ++i) {
-        sum += kernel[idx * total_inputs + i] * input[i];
+    for (int c = 0; c < kernel_channels; ++c) {
+        for (int i = 0; i < input_size; ++i) {
+            for (int j = 0; j < input_size; ++j) {
+                int input_index = (c * input_size * input_size) + (i * input_size) + j;
+                int kernel_index = (idx * kernel_channels * input_size * input_size) + (i * input_size * kernel_channels) + (j * kernel_channels) + c;
+                // sum += kernel[idx][c][i][j]* input[c][i][j]
+                sum += kernel[kernel_index] * input[input_index];
+            }
+        }
     }
-    
     sum += bias[idx];
-    output[idx] = fmax(0.0, sum);
+    output[idx] = fmaxf(0.0, sum);
 }
 
 
@@ -133,8 +143,8 @@ __global__ void softmax(float* input){
 
 int main(){
     float conv1_kernel[20][5][5]; float conv1_bias[20];
-    float conv2_kernel[50][5][5][20]; float conv2_bias[50];
-    float fc1_kernel[500][4][4][50]; float fc1_bias[500];
+    float conv2_kernel[50][20][5][5]; float conv2_bias[50];
+    float fc1_kernel[500][50][4][4]; float fc1_bias[500];
     float fc2_kernel[10][500]; float fc2_bias[10];
 
 
@@ -206,9 +216,9 @@ int main(){
     // Read weights from the file into conv2_kernel array
     // (Assuming weights are stored in row-major order)
     for (int i = 0; i < 50; ++i) {
-        for (int j = 0; j < 5; ++j) {
+        for (int j = 0; j < 20; ++j) {
             for (int k = 0; k < 5; ++k) {
-                for (int l = 0; l < 20; ++l) {
+                for (int l = 0; l < 5; ++l) {
                     if (!(conv2_file >> conv2_kernel[i][j][k][l])) {
                         cerr << "Error: Unable to read conv2 weights from file." << endl;
                         return 1;
@@ -236,9 +246,9 @@ int main(){
     // Read weights from the file into fc1_kernel array
     // (Assuming weights are stored in row-major order)
     for (int i = 0; i < 500; ++i) {
-        for (int j = 0; j < 4; ++j) {
+        for (int j = 0; j < 50; ++j) {
             for (int k = 0; k < 4; ++k) {
-                for (int l = 0; l < 50; ++l) {
+                for (int l = 0; l < 4; ++l) {
                     if (!(fc1_file >> fc1_kernel[i][j][k][l])) {
                         cerr << "Error: Unable to read fc1 weights from file." << endl;
                         return 1;
@@ -314,15 +324,15 @@ int main(){
 
 
 
-    // float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][5][5][20], device_conv2_bias[50];
+    // float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][20][5][5], device_conv2_bias[50];
     float *device_conv2_input, *device_conv2_output, *device_conv2_kernel, *device_conv2_bias;
     cudaMalloc((void**)&device_conv2_input, 20*12*12*sizeof(float));
     cudaMalloc((void**)&device_conv2_output, 50*8*8*sizeof(float));
-    cudaMalloc((void**)&device_conv2_kernel, 50*5*5*20*sizeof(float));
+    cudaMalloc((void**)&device_conv2_kernel, 50*20*5*5*sizeof(float));
     cudaMalloc((void**)&device_conv2_bias, 50*sizeof(float));
 
     cudaMemcpy(device_conv2_input, pool1_output, 20*12*12*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(device_conv2_kernel, conv2_kernel, 50*5*5*20*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_conv2_kernel, conv2_kernel, 50*20*5*5*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(device_conv2_bias, conv2_bias, 50*sizeof(float), cudaMemcpyHostToDevice);
 
     dim3 conv2_block(8,8,1); dim3 conv2_grid(50,1,1);
@@ -344,15 +354,15 @@ int main(){
 
 
 
-    // float device_fc1_input[50][4][4], device_fc1_output[500], device_fc1_kernel[500][4][4][50], device_fc1_bias[50];
+    // float device_fc1_input[50][4][4], device_fc1_output[500], device_fc1_kernel[500][50][4][4], device_fc1_bias[50];
     float *device_fc1_input, *device_fc1_output, *device_fc1_kernel, *device_fc1_bias;
     cudaMalloc((void**)&device_fc1_input, 50*4*4*sizeof(float));
     cudaMalloc((void**)&device_fc1_output, 500*sizeof(float));
-    cudaMalloc((void**)&device_fc1_kernel, 500*4*4*50*sizeof(float));
+    cudaMalloc((void**)&device_fc1_kernel, 500*50*4*4*sizeof(float));
     cudaMalloc((void**)&device_fc1_bias, 500*sizeof(float));
 
     cudaMemcpy(device_fc1_input, pool2_output, 50*4*4*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(device_fc1_kernel, fc1_kernel, 500*4*4*50*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(device_fc1_kernel, fc1_kernel, 500*50*4*4*sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(device_fc1_bias, fc1_bias, 500*sizeof(float), cudaMemcpyHostToDevice);
 
     dim3 fc1_block(500,1,1); dim3 fc1_grid(1,1,1);
@@ -397,11 +407,11 @@ int main(){
     vector<pair<float, int> > indexed_values;
 
     for (int i = 0; i < 10; ++i) {
-        indexed_values.push_back(make_pair(soft_output[i],i+1));
+        indexed_values.push_back(make_pair(-1.0*soft_output[i],i+1));
     }
     sort(indexed_values.begin(),indexed_values.end());
     for (int i = 0; i < 5; ++i) {
-        cout << indexed_values[i].first << " class " << indexed_values[i].second << endl;
+        cout << -100.0*indexed_values[i].first << " class " << indexed_values[i].second << endl;
     }
 
 }
