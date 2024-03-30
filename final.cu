@@ -105,7 +105,7 @@ __global__ void FC_1(float* input, float* output, float* kernel, float* bias) {
         for (int i = 0; i < input_size; ++i) {
             for (int j = 0; j < input_size; ++j) {
                 int input_index = (c * input_size * input_size) + (i * input_size) + j;
-                int kernel_index = (idx * kernel_channels * input_size * input_size) + (i * input_size * kernel_channels) + (j * kernel_channels) + c;
+                int kernel_index = (idx * kernel_channels * input_size * input_size) + (c * input_size * input_size) + (i * input_size) + j;
                 // sum += kernel[idx][c][i][j]* input[c][i][j]
                 sum += kernel[kernel_index] * input[input_index];
             }
@@ -142,156 +142,43 @@ __global__ void softmax(float* input){
 
 
 int main(){
-    float conv1_kernel[20][5][5]; float conv1_bias[20];
-    float conv2_kernel[50][20][5][5]; float conv2_bias[50];
-    float fc1_kernel[500][50][4][4]; float fc1_bias[500];
-    float fc2_kernel[10][500]; float fc2_bias[10];
+    float conv1_kernel[20*5*5]; float conv1_bias[20];
+    float conv2_kernel[50*20*5*5]; float conv2_bias[50];
+    float fc1_kernel[500*50*4*4]; float fc1_bias[500];
+    float fc2_kernel[10*500]; float fc2_bias[10];
 
-
-
-    float conv1_input[28][28]; 
-    float conv1_output[20][24][24];
-    float pool1_output[20][12][12];
-    float conv2_output[50][8][8];
-    float pool2_output[50][4][4];
+    float conv1_input[28*28]; 
+    float conv1_output[20*24*24];
+    float pool1_output[20*12*12];
+    float conv2_output[50*8*8];
+    float pool2_output[50*4*4];
     float fc1_output[500];
     float fc2_output[10];
     float soft_output[10];
 
+    ifstream inputFile1("check.txt");
+    if(!inputFile1.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
+    for(int i=0;i<28*28;i++) inputFile1 >> conv1_input[i];
 
-    ifstream input_file("check.txt");
-    if(!input_file.is_open()) {
-        cerr << "Error: Unable to open weights file." << endl;
-        return 1;
-    }
+    ifstream inputFile2("trained_weights/conv1.txt");
+    if(!inputFile2.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
+    for(int i=0;i<20*5*5;i++) inputFile2 >> conv1_kernel[i];
+    for(int i=0;i<20;i++) inputFile2 >> conv1_bias[i];
 
-    for (int i = 0; i < 28; ++i) {
-        for (int j = 0; j < 28; ++j) {
-            
-            if (!(input_file >> conv1_input[i][j])) {
-                cerr << "Error: Unable to read weights from file." << endl;
-                break;
-            }
-            
-        }
-    }
+    ifstream inputFile3("trained_weights/conv2.txt");
+    if(!inputFile3.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
+    for(int i=0;i<50*20*5*5;i++) inputFile3 >> conv2_kernel[i];
+    for(int i=0;i<50;i++) inputFile3 >> conv2_bias[i];
 
-    input_file.close();
+    ifstream inputFile4("trained_weights/fc1.txt");
+    if(!inputFile4.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
+    for(int i=0;i<500*50*4*4;i++) inputFile4 >> fc1_kernel[i];
+    for(int i=0;i<500;i++) inputFile4 >> fc1_bias[i];
 
-
-
-    ifstream conv1_file("trained_weights/conv1.txt");
-    if(!conv1_file.is_open()) {
-        cerr << "Error: Unable to open weights file." << endl;
-        return 1;
-    }
-
-    // Read weights from the file into conv1_kernel array
-    for(int i = 0; i < 20; ++i) {
-        for (int j = 0; j < 5; ++j) {
-            for (int k = 0; k < 5; ++k) {
-                if (!(conv1_file >> conv1_kernel[i][j][k])) {
-                    cerr << "Error: Unable to read weights from file." << endl;
-                    break;
-                }
-            }
-        }
-    }
-
-    for(int i=0;i<20;i++){
-        if (!(conv1_file >> conv1_bias[i])) {
-            cerr << "Error: Unable to read weights from file." << endl;
-            break;
-        }
-    }
-
-    conv1_file.close();
-
-
-    ifstream conv2_file("trained_weights/conv2.txt");
-    if(!conv2_file.is_open()) {
-        cerr << "Error: Unable to open conv2 weights file." << endl;
-        return 1;
-    }
-    // Read weights from the file into conv2_kernel array
-    // (Assuming weights are stored in row-major order)
-    for (int i = 0; i < 50; ++i) {
-        for (int j = 0; j < 20; ++j) {
-            for (int k = 0; k < 5; ++k) {
-                for (int l = 0; l < 5; ++l) {
-                    if (!(conv2_file >> conv2_kernel[i][j][k][l])) {
-                        cerr << "Error: Unable to read conv2 weights from file." << endl;
-                        return 1;
-                    }
-                }
-            }
-        }
-    }
-
-    for(int i=0;i<50;i++){
-        if (!(conv2_file >> conv2_bias[i])) {
-            cerr << "Error: Unable to read weights from file." << endl;
-            break;
-        }
-    }
-
-    conv2_file.close();
-
-
-    ifstream fc1_file("trained_weights/fc1.txt");
-    if (!fc1_file.is_open()) {
-        cerr << "Error: Unable to open fc1 weights file." << endl;
-        return 1;
-    }
-    // Read weights from the file into fc1_kernel array
-    // (Assuming weights are stored in row-major order)
-    for (int i = 0; i < 500; ++i) {
-        for (int j = 0; j < 50; ++j) {
-            for (int k = 0; k < 4; ++k) {
-                for (int l = 0; l < 4; ++l) {
-                    if (!(fc1_file >> fc1_kernel[i][j][k][l])) {
-                        cerr << "Error: Unable to read fc1 weights from file." << endl;
-                        return 1;
-                    }
-                }
-            }
-        }
-    }
-
-    for(int i=0;i<500;i++){
-        if (!(fc1_file >> fc1_bias[i])) {
-            cerr << "Error: Unable to read weights from file." << endl;
-            break;
-        }
-    }
-
-    fc1_file.close();
-
-
-    std::ifstream fc2_file("trained_weights/fc2.txt");
-    if (!fc2_file.is_open()) {
-        std::cerr << "Error: Unable to open fc2 weights file." << std::endl;
-        return 1;
-    }
-    // Read weights from the file into fc2_kernel array
-    // (Assuming weights are stored in row-major order)
-    for (int i = 0; i < 10; ++i) {
-        for (int j = 0; j < 500; ++j) {
-            if (!(fc2_file >> fc2_kernel[i][j])) {
-                std::cerr << "Error: Unable to read fc2 weights from file." << std::endl;
-                return 1;
-            }
-        }
-    }
-
-    for(int i=0;i<10;i++){
-        if (!(fc2_file >> fc2_bias[i])) {
-            cerr << "Error: Unable to read weights from file." << endl;
-            break;
-        }
-    }
-
-    fc2_file.close();
+    ifstream inputFile5("trained_weights/fc2.txt");
+    if(!inputFile5.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
+    for(int i=0;i<10*500;i++) inputFile5 >> fc2_kernel[i];
+    for(int i=0;i<10;i++) inputFile5 >> fc2_bias[i];
 
 
     // float device_conv1_input[28][28], device_conv1_output[20][24][24], device_conv1_kernel[20][5][5], device_conv1_bias[20];
@@ -320,7 +207,7 @@ int main(){
     dim3 pool1_block(12,12,1); dim3 pool1_grid(20,1,1);
     Pool_1<<<pool1_grid, pool1_block>>>(device_pool1_input, device_pool1_output);
     cudaDeviceSynchronize();
-    cudaMemcpy(pool1_output, device_pool1_input, 20*12*12*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(pool1_output, device_pool1_output, 20*12*12*sizeof(float), cudaMemcpyDeviceToHost);
 
 
 
@@ -407,7 +294,7 @@ int main(){
     vector<pair<float, int> > indexed_values;
 
     for (int i = 0; i < 10; ++i) {
-        indexed_values.push_back(make_pair(-1.0*soft_output[i],i+1));
+        indexed_values.push_back(make_pair(-1.0*soft_output[i],i));
     }
     sort(indexed_values.begin(),indexed_values.end());
     for (int i = 0; i < 5; ++i) {
