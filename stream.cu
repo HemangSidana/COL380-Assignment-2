@@ -6,7 +6,7 @@
 #include <cmath>
 using namespace std;
 
-#define num_streams 2
+#define num_streams 1
 
 __global__ void Conv_1(float* input, float* output, float* kernel, float* bias) {
     int channel = blockIdx.x;
@@ -254,6 +254,8 @@ int main(){
         cudaFree(device_conv1_bias[z]);
     }
 
+    // for(int i=0; i<20*24*24; i++) cout<<conv1_output[0][i]<<endl;
+
     float **device_pool1_input= new float*[num_streams];
     float **device_pool1_output= new float*[num_streams];
 
@@ -273,6 +275,8 @@ int main(){
         cudaFree(device_pool1_input[z]);
         cudaFree(device_pool1_output[z]);
     }
+
+    // for(int i=0; i<20*12*12;i++) cout<<pool1_output[0][i]<<endl;
 
     float **device_conv2_input= new float*[num_streams];
     float **device_conv2_output= new float*[num_streams];
@@ -304,6 +308,9 @@ int main(){
         cudaFree(device_conv2_bias[z]);
     }
 
+    // for(int i=0;i<50*8*8;i++) cout<<conv2_output[0][i]<<endl;
+
+
     float **device_pool2_input= new float*[num_streams];
     float **device_pool2_output= new float*[num_streams];
 
@@ -313,15 +320,17 @@ int main(){
         // float *device_pool2_input, *device_pool2_output;
         cudaMalloc((void**)&device_pool2_input[z], 50*8*8*sizeof(float));
         cudaMalloc((void**)&device_pool2_output[z], 50*4*4*sizeof(float));
-        cudaMemcpyAsync(device_pool2_input[z], device_conv2_output[z], 50*8*8*sizeof(float), cudaMemcpyHostToDevice,stream[z]);
+        cudaMemcpyAsync(device_pool2_input[z], conv2_output[z], 50*8*8*sizeof(float), cudaMemcpyHostToDevice,stream[z]);
         dim3 pool2_block(4,4,1); dim3 pool2_grid(50,1,1);
         Pool_2<<<pool2_grid, pool2_block,0, stream[z]>>>(device_pool2_input[z], device_pool2_output[z]);
         // cudaDeviceSynchronize();
         cudaMemcpyAsync(pool2_output[z], device_pool2_output[z], 50*4*4*sizeof(float), cudaMemcpyDeviceToHost,stream[z]);
 
-        cudaFree(device_pool1_input[z]);
-        cudaFree(device_pool1_output[z]);
+        cudaFree(device_pool2_input[z]);
+        cudaFree(device_pool2_output[z]);
     }
+
+    // for(int i=0; i<50*4*4;i++) cout<<pool2_output[0][i]<<endl;
 
     float **device_fc1_input= new float*[num_streams];
     float **device_fc1_output= new float*[num_streams];
