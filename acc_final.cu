@@ -178,12 +178,6 @@ int main(){
 
     while ((ent = readdir(dir)) != NULL) {
         float conv1_input[28*28]; 
-        float conv1_output[20*24*24];
-        float pool1_output[20*12*12];
-        float conv2_output[50*8*8];
-        float pool2_output[50*4*4];
-        float fc1_output[500];
-        float fc2_output[10];
         float soft_output[10];
         string filename = ent->d_name;
         if(filename=="." || filename=="..") continue;
@@ -195,7 +189,6 @@ int main(){
 
         
 
-        // float device_conv1_input[28][28], device_conv1_output[20][24][24], device_conv1_kernel[20][5][5], device_conv1_bias[20];
         float *device_conv1_input, *device_conv1_output, *device_conv1_kernel, *device_conv1_bias;
         cudaMalloc((void**)&device_conv1_input, 28*28*sizeof(float));
         cudaMalloc((void**)&device_conv1_output, 20*24*24*sizeof(float));
@@ -208,122 +201,79 @@ int main(){
 
         dim3 conv1_block(24,24,1); dim3 conv1_grid(20,1,1);
         Conv_1<<<conv1_grid, conv1_block>>>(device_conv1_input, device_conv1_output, device_conv1_kernel, device_conv1_bias);
-        cudaDeviceSynchronize();
-        cudaMemcpy(conv1_output,device_conv1_output,20*24*24*sizeof(float), cudaMemcpyDeviceToHost);
+    
         cudaFree(device_conv1_input);
-        cudaFree(device_conv1_output);
         cudaFree(device_conv1_kernel);
         cudaFree(device_conv1_bias);
 
 
 
-        // float device_pool1_input[20][24][24], device_pool1_output[20][12][12];
-        float *device_pool1_input, *device_pool1_output;
-        cudaMalloc((void**)&device_pool1_input, 20*24*24*sizeof(float));
+        float *device_pool1_output;
         cudaMalloc((void**)&device_pool1_output, 20*12*12*sizeof(float));
-        cudaMemcpy(device_pool1_input, conv1_output, 20*24*24*sizeof(float), cudaMemcpyHostToDevice);
         dim3 pool1_block(12,12,1); dim3 pool1_grid(20,1,1);
-        Pool_1<<<pool1_grid, pool1_block>>>(device_pool1_input, device_pool1_output);
-        cudaDeviceSynchronize();
-        cudaMemcpy(pool1_output, device_pool1_output, 20*12*12*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(device_pool1_input);
-        cudaFree(device_pool1_output);
+        Pool_1<<<pool1_grid, pool1_block>>>(device_conv1_output, device_pool1_output);
 
 
-        // float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][20][5][5], device_conv2_bias[50];
-        float *device_conv2_input, *device_conv2_output, *device_conv2_kernel, *device_conv2_bias;
-        cudaMalloc((void**)&device_conv2_input, 20*12*12*sizeof(float));
+        float  *device_conv2_output, *device_conv2_kernel, *device_conv2_bias;
         cudaMalloc((void**)&device_conv2_output, 50*8*8*sizeof(float));
         cudaMalloc((void**)&device_conv2_kernel, 50*20*5*5*sizeof(float));
         cudaMalloc((void**)&device_conv2_bias, 50*sizeof(float));
 
-        cudaMemcpy(device_conv2_input, pool1_output, 20*12*12*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_conv2_kernel, conv2_kernel, 50*20*5*5*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_conv2_bias, conv2_bias, 50*sizeof(float), cudaMemcpyHostToDevice);
 
         dim3 conv2_block(8,8,1); dim3 conv2_grid(50,1,1);
-        Conv_2<<<conv2_grid, conv2_block>>>(device_conv2_input, device_conv2_output, device_conv2_kernel, device_conv2_bias);
-        cudaDeviceSynchronize();
-        cudaMemcpy(conv2_output, device_conv2_output, 50*8*8*sizeof(float), cudaMemcpyDeviceToHost);
-
-        cudaFree(device_conv2_input);
-        cudaFree(device_conv2_output);
+        Conv_2<<<conv2_grid, conv2_block>>>(device_pool1_output, device_conv2_output, device_conv2_kernel, device_conv2_bias);
+        
         cudaFree(device_conv2_kernel);
         cudaFree(device_conv2_bias);
 
 
 
-        // float device_pool2_input[50][8][8], device_pool2_output[50][4][4];
-        float *device_pool2_input, *device_pool2_output;
-        cudaMalloc((void**)&device_pool2_input, 50*8*8*sizeof(float));
+        float  *device_pool2_output;
         cudaMalloc((void**)&device_pool2_output, 50*4*4*sizeof(float));
-        cudaMemcpy(device_pool2_input, conv2_output, 50*8*8*sizeof(float), cudaMemcpyHostToDevice);
         dim3 pool2_block(4,4,1); dim3 pool2_grid(50,1,1);
-        Pool_2<<<pool2_grid, pool2_block>>>(device_pool2_input, device_pool2_output);
-        cudaDeviceSynchronize();
-        cudaMemcpy(pool2_output, device_pool2_output, 50*4*4*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(device_pool2_input);
-        cudaFree(device_pool2_output);
+        Pool_2<<<pool2_grid, pool2_block>>>(device_conv2_output, device_pool2_output);
 
 
-
-        // float device_fc1_input[50][4][4], device_fc1_output[500], device_fc1_kernel[500][50][4][4], device_fc1_bias[50];
-        float *device_fc1_input, *device_fc1_output, *device_fc1_kernel, *device_fc1_bias;
-        cudaMalloc((void**)&device_fc1_input, 50*4*4*sizeof(float));
+        float *device_fc1_output, *device_fc1_kernel, *device_fc1_bias;
         cudaMalloc((void**)&device_fc1_output, 500*sizeof(float));
         cudaMalloc((void**)&device_fc1_kernel, 500*50*4*4*sizeof(float));
         cudaMalloc((void**)&device_fc1_bias, 500*sizeof(float));
 
-        cudaMemcpy(device_fc1_input, pool2_output, 50*4*4*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_fc1_kernel, fc1_kernel, 500*50*4*4*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_fc1_bias, fc1_bias, 500*sizeof(float), cudaMemcpyHostToDevice);
 
         dim3 fc1_block(500,1,1); dim3 fc1_grid(1,1,1);
-        FC_1<<<fc1_grid, fc1_block>>>(device_fc1_input, device_fc1_output, device_fc1_kernel, device_fc1_bias);
-        cudaDeviceSynchronize();
-        cudaMemcpy(fc1_output, device_fc1_output, 500*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(device_fc1_input);
-        cudaFree(device_fc1_output);
+        FC_1<<<fc1_grid, fc1_block>>>(device_pool2_output, device_fc1_output, device_fc1_kernel, device_fc1_bias);
+        
         cudaFree(device_fc1_kernel);
         cudaFree(device_fc1_bias);
 
 
 
-        // float device_fc2_input[500], device_fc2_output[10], device_fc2_kernel[10][500], device_fc2_bias[10];
-        float *device_fc2_input, *device_fc2_output, *device_fc2_kernel, *device_fc2_bias;
-        cudaMalloc((void**)&device_fc2_input, 500*sizeof(float));
+        float *device_fc2_output, *device_fc2_kernel, *device_fc2_bias;
         cudaMalloc((void**)&device_fc2_output, 10*sizeof(float));
         cudaMalloc((void**)&device_fc2_kernel, 10*500*sizeof(float));
         cudaMalloc((void**)&device_fc2_bias, 10*sizeof(float));
 
-        cudaMemcpy(device_fc2_input, fc1_output, 500*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_fc2_kernel, fc2_kernel, 10*500*sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(device_fc2_bias, fc2_bias, 10*sizeof(float), cudaMemcpyHostToDevice);
 
         dim3 fc2_block(10,1,1); dim3 fc2_grid(1,1,1);
-        FC_2<<<fc2_grid, fc2_block>>>(device_fc2_input, device_fc2_output, device_fc2_kernel, device_fc2_bias);
+        FC_2<<<fc2_grid, fc2_block>>>(device_fc1_output, device_fc2_output, device_fc2_kernel, device_fc2_bias);
         cudaDeviceSynchronize();
-        cudaMemcpy(fc2_output, device_fc2_output, 10*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(device_fc2_input);
-        cudaFree(device_fc2_output);
+        
         cudaFree(device_fc2_kernel);
         cudaFree(device_fc2_bias);
 
 
 
-        // float device_soft_input[10], device_soft_output[10];
-        float *device_soft_input;
-        cudaMalloc((void**)&device_soft_input, 10*sizeof(float));
+        
 
-        cudaMemcpy(device_soft_input, fc2_output, 10*sizeof(float), cudaMemcpyHostToDevice);
         dim3 soft_block(1,1,1); dim3 soft_grid(1,1,1); 
-        softmax<<<soft_grid, soft_block>>>(device_soft_input);
-        cudaDeviceSynchronize();
-        cudaMemcpy(soft_output, device_soft_input, 10*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaFree(device_soft_input);
-        // for(int i=0;i<10;i++){
-        //     cout<<soft_output[i]<<endl;
-        // }
+        softmax<<<soft_grid, soft_block>>>(device_fc2_output);
+        cudaMemcpy(soft_output, device_fc2_output, 10*sizeof(float), cudaMemcpyDeviceToHost);
 
         vector<pair<float, int> > indexed_values;
 
@@ -337,14 +287,13 @@ int main(){
         if(ans==indexed_values[0].second){right++;}
         else wrong++;
 
-        // delete[] conv1_input;
-        // delete[] conv1_output;
-        // delete[] pool1_output;
-        // delete[] conv2_output;
-        // delete[] pool2_output;
-        // delete[] fc1_output;
-        // delete[] fc2_output;
-        // delete[] soft_output;
+        cudaFree(device_conv1_output);
+        cudaFree(device_conv2_output);
+        cudaFree(device_pool1_output);
+        cudaFree(device_pool2_output);
+        cudaFree(device_fc1_output);
+        cudaFree(device_fc2_output);
+
     }
     closedir(dir);
     cout<<right<<endl;
