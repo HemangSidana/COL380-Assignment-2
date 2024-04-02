@@ -150,18 +150,6 @@ int main(){
     float fc1_kernel[500*50*4*4]; float fc1_bias[500];
     float fc2_kernel[10*500]; float fc2_bias[10];
 
-    // float conv1_input[28*28]; 
-    // float conv1_output[20*24*24];
-    // float pool1_output[20*12*12];
-    // float conv2_output[50*8*8];
-    // float pool2_output[50*4*4];
-    // float fc1_output[500];
-    // float fc2_output[10];
-    // float soft_output[10];
-
-    // ifstream inputFile1("check.txt");
-    // if(!inputFile1.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
-    // for(int i=0;i<28*28;i++) inputFile1 >> conv1_input[i];
 
     ifstream inputFile2("trained_weights/conv1.txt");
     if(!inputFile2.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
@@ -198,6 +186,7 @@ int main(){
         float fc2_output[10];
         float soft_output[10];
         string filename = ent->d_name;
+        if(filename=="." || filename=="..") continue;
         int ans= filename[filename.size()-5]-'0';
         ifstream inputFile1((inputdir + filename).c_str());
         if(!inputFile1.is_open()){std::cerr << "Failed to open the file." << std::endl;return 1;}
@@ -221,6 +210,10 @@ int main(){
         Conv_1<<<conv1_grid, conv1_block>>>(device_conv1_input, device_conv1_output, device_conv1_kernel, device_conv1_bias);
         cudaDeviceSynchronize();
         cudaMemcpy(conv1_output,device_conv1_output,20*24*24*sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(device_conv1_input);
+        cudaFree(device_conv1_output);
+        cudaFree(device_conv1_kernel);
+        cudaFree(device_conv1_bias);
 
 
 
@@ -233,7 +226,8 @@ int main(){
         Pool_1<<<pool1_grid, pool1_block>>>(device_pool1_input, device_pool1_output);
         cudaDeviceSynchronize();
         cudaMemcpy(pool1_output, device_pool1_output, 20*12*12*sizeof(float), cudaMemcpyDeviceToHost);
-
+        cudaFree(device_pool1_input);
+        cudaFree(device_pool1_output);
 
 
         // float device_conv2_input[20][12][12], device_conv2_output[50][8][8], device_conv2_kernel[50][20][5][5], device_conv2_bias[50];
@@ -252,6 +246,11 @@ int main(){
         cudaDeviceSynchronize();
         cudaMemcpy(conv2_output, device_conv2_output, 50*8*8*sizeof(float), cudaMemcpyDeviceToHost);
 
+        cudaFree(device_conv2_input);
+        cudaFree(device_conv2_output);
+        cudaFree(device_conv2_kernel);
+        cudaFree(device_conv2_bias);
+
 
 
         // float device_pool2_input[50][8][8], device_pool2_output[50][4][4];
@@ -263,6 +262,8 @@ int main(){
         Pool_2<<<pool2_grid, pool2_block>>>(device_pool2_input, device_pool2_output);
         cudaDeviceSynchronize();
         cudaMemcpy(pool2_output, device_pool2_output, 50*4*4*sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(device_pool2_input);
+        cudaFree(device_pool2_output);
 
 
 
@@ -281,6 +282,10 @@ int main(){
         FC_1<<<fc1_grid, fc1_block>>>(device_fc1_input, device_fc1_output, device_fc1_kernel, device_fc1_bias);
         cudaDeviceSynchronize();
         cudaMemcpy(fc1_output, device_fc1_output, 500*sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(device_fc1_input);
+        cudaFree(device_fc1_output);
+        cudaFree(device_fc1_kernel);
+        cudaFree(device_fc1_bias);
 
 
 
@@ -299,6 +304,10 @@ int main(){
         FC_2<<<fc2_grid, fc2_block>>>(device_fc2_input, device_fc2_output, device_fc2_kernel, device_fc2_bias);
         cudaDeviceSynchronize();
         cudaMemcpy(fc2_output, device_fc2_output, 10*sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(device_fc2_input);
+        cudaFree(device_fc2_output);
+        cudaFree(device_fc2_kernel);
+        cudaFree(device_fc2_bias);
 
 
 
@@ -311,7 +320,7 @@ int main(){
         softmax<<<soft_grid, soft_block>>>(device_soft_input);
         cudaDeviceSynchronize();
         cudaMemcpy(soft_output, device_soft_input, 10*sizeof(float), cudaMemcpyDeviceToHost);
-
+        cudaFree(device_soft_input);
         // for(int i=0;i<10;i++){
         //     cout<<soft_output[i]<<endl;
         // }
@@ -327,6 +336,15 @@ int main(){
         // }
         if(ans==indexed_values[0].second){right++;}
         else wrong++;
+
+        // delete[] conv1_input;
+        // delete[] conv1_output;
+        // delete[] pool1_output;
+        // delete[] conv2_output;
+        // delete[] pool2_output;
+        // delete[] fc1_output;
+        // delete[] fc2_output;
+        // delete[] soft_output;
     }
     closedir(dir);
     cout<<right<<endl;
