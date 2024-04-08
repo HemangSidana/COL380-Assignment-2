@@ -5,133 +5,260 @@
 #include <fstream>
 using namespace std;
 
-void convolve_without_padding(float *inputTensor, int inputChannels, int inputSize, float *outputTensor, int outputChannels, float *kernels, float *biases, int kernelSize)
-{
-    int outputSize = inputSize - kernelSize + 1;
 
-    for(int a=0;a<outputChannels;a++){
-        for(int b=0;b<outputSize;b++){
-            for(int c=0;c<outputSize;c++){
-                float sum=0.0;
-                for(int i=0;i<inputChannels;i++){
-                    for(int j=0;j<kernelSize;j++){
-                        for(int k=0;k<kernelSize;k++){
-                            sum+= inputTensor[i*inputSize*inputSize + (b+j)*inputSize + (c+k)] * kernels[a*inputChannels*kernelSize*kernelSize + i*kernelSize*kernelSize + j*kernelSize +k];
-                        }
+void convolution(float *inputMatrix, int inputSize, float *kernelMatrix, int kernelSize, float *outputMatrix, int paddingValue) {
+    int outputSize = inputSize - kernelSize + 1 + 2 * paddingValue; // Output size considering padding
+
+    // Loop over each element in the output matrix
+    for (int i = 0; i < outputSize; i++) {
+        for (int j = 0; j < outputSize; j++) {
+            float sum = 0.0f;
+            // Loop over each element in the kernel
+            for (int ki = 0; ki < kernelSize; ki++) {
+                for (int kj = 0; kj < kernelSize; kj++) {
+                    // Compute input matrix indices considering padding
+                    int inputRowIndex = i + ki - paddingValue;
+                    int inputColIndex = j + kj - paddingValue;
+                    // Check for valid input matrix indices
+                    if (inputRowIndex >= 0 && inputRowIndex < inputSize && inputColIndex >= 0 && inputColIndex < inputSize) {
+                        // Perform element-wise multiplication and accumulation
+                        sum += inputMatrix[inputRowIndex * inputSize + inputColIndex] * kernelMatrix[ki * kernelSize + kj];
                     }
                 }
-                sum+= biases[a];
-                outputTensor[a*outputSize*outputSize + b*outputSize + c] = sum;
             }
+            // Store the result in the output matrix
+            outputMatrix[i * outputSize + j] = sum;
         }
     }
 }
 
-void convolve_with_padding(float *inputTensor, int inputChannels, int inputSize, float *outputTensor, int outputChannels, float *kernels, float *biases, int kernelSize) {
-    int padding = (kernelSize - 1) / 2; // Compute padding size
-    int paddedSize = inputSize + 2 * padding; // Compute padded input size
 
-    for(int a = 0; a < outputChannels; a++) {
-        for(int b = 0; b < inputSize; b++) {
-            for(int c = 0; c < inputSize; c++) {
-                float sum = 0.0;
-                for(int i = 0; i < inputChannels; i++) {
-                    for(int j = 0; j < kernelSize; j++) {
-                        for(int k = 0; k < kernelSize; k++) {
-                            int inputRow = b + j - padding;
-                            int inputCol = c + k - padding;
-                            if(inputRow >= 0 && inputRow < inputSize && inputCol >= 0 && inputCol < inputSize) {
-                                sum += inputTensor[i * inputSize * inputSize + inputRow * inputSize + inputCol] * kernels[a * inputChannels * kernelSize * kernelSize + i * kernelSize * kernelSize + j * kernelSize + k];
-                            }
-                        }
-                    }
-                }
-                sum += biases[a];
-                outputTensor[a * inputSize * inputSize + b * inputSize + c] = sum;
-            }
+void relu(float *inputMatrix, int m, int n, float *outputMatrix) {
+    // Apply ReLU function element-wise
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            int index = i * n + j;
+            outputMatrix[index] = (inputMatrix[index] > 0.0f) ? inputMatrix[index] : 0.0f;
         }
     }
 }
 
-void Relu(float *inputTensor, float *outputTensor, int inputChannels, int inputSize) {
-    for (int inChannel = 0; inChannel < inputChannels; inChannel++) {
-        for (int i = 0; i < inputSize; i++) {
-            for (int j = 0; j < inputSize; j++) {
-                int index = inChannel * inputSize * inputSize + i * inputSize + j;
-                outputTensor[index] = (inputTensor[index] > 0.0f) ? inputTensor[index] : 0.0f;
-            }
+void tanh(float *inputMatrix, int m, int n, float *outputMatrix) {
+    // Apply Tanh function element-wise
+    for (int i = 0; i < m; i++) {
+        for (int j = 0; j < n; j++) {
+            int index = i * n + j;
+            outputMatrix[index] = tanh(inputMatrix[index]);
         }
     }
 }
 
-void Tanh(float *inputTensor, float *outputTensor, int inputChannels, int inputSize) {
-    for (int inChannel = 0; inChannel < inputChannels; inChannel++) {
-        for (int i = 0; i < inputSize; i++) {
-            for (int j = 0; j < inputSize; j++) {
-                int index = inChannel * inputSize * inputSize + i * inputSize + j;
-                outputTensor[index] = tanh(inputTensor[index]);
-            }
-        }
-    }
-}
 
-void maxpooling(float *inputTensor, float *outputTensor, int inputChannels, int inputSize, int poolSize) {
+void maxpool(float *inputMatrix, int inputSize, int poolSize, float *outputMatrix) {
     int outputSize = inputSize / poolSize;
 
-    for (int inChannel = 0; inChannel < inputChannels; inChannel++) {
-        for (int i = 0; i < outputSize; i++) {
-            for (int j = 0; j < outputSize; j++) {
-                float maxval = inputTensor[inChannel * inputSize * inputSize + i * poolSize * inputSize + j * poolSize];
-                for (int k = 0; k < poolSize; k++) {
-                    for (int l = 0; l < poolSize; l++) {
-                        float val = inputTensor[inChannel * inputSize * inputSize + (i * poolSize + k) * inputSize + j * poolSize + l];
-                        maxval = (val > maxval) ? val : maxval;
+    // Loop through each pooling window
+    for (int i = 0; i < outputSize; i++) {
+        for (int j = 0; j < outputSize; j++) {
+            // Find maximum value within the pooling window
+            float maxVal = inputMatrix[i * poolSize * inputSize + j * poolSize];
+            for (int k = 0; k < poolSize; k++) {
+                for (int l = 0; l < poolSize; l++) {
+                    float currentVal = inputMatrix[(i * poolSize + k) * inputSize + j * poolSize + l];
+                    if (currentVal > maxVal) {
+                        maxVal = currentVal;
                     }
                 }
-                outputTensor[inChannel * outputSize * outputSize + i * outputSize + j] = maxval;
             }
+            // Store the maximum value in the output matrix
+            outputMatrix[i * outputSize + j] = maxVal;
         }
     }
 }
 
 
-void avgpooling(float *inputTensor, float *outputTensor, int inputChannels, int inputSize, int poolSize) {
+
+void avgpool(float *inputMatrix, int inputSize, int poolSize, float *outputMatrix) {
     int outputSize = inputSize / poolSize;
 
-    for (int inChannel = 0; inChannel < inputChannels; inChannel++) {
-        for (int i = 0; i < outputSize; i++) {
-            for (int j = 0; j < outputSize; j++) {
-                float sum = 0.0f;
-                for (int k = 0; k < poolSize; k++) {
-                    for (int l = 0; l < poolSize; l++) {
-                        float val = inputTensor[inChannel * inputSize * inputSize + (i * poolSize + k) * inputSize + j * poolSize + l];
-                        sum += val ;
-                    }
+    // Loop through each pooling window
+    for (int i = 0; i < outputSize; i++) {
+        for (int j = 0; j < outputSize; j++) {
+            // Calculate the average value within the pooling window
+            float sum = 0.0f;
+            for (int k = 0; k < poolSize; k++) {
+                for (int l = 0; l < poolSize; l++) {
+                    sum += inputMatrix[(i * poolSize + k) * inputSize + j * poolSize + l];
                 }
-                outputTensor[inChannel * outputSize * outputSize + i * outputSize + j] = sum / (poolSize * poolSize);
             }
+            float avgVal = sum / (poolSize * poolSize);
+            // Store the average value in the output matrix
+            outputMatrix[i * outputSize + j] = avgVal;
         }
     }
 }
 
 
-void softmax(float* inputVector, int size ,float* probabilities) {
-    float* expValues = new float[size];
+
+void softmax(float* inputVector, int inputsize ,float* outputVector) {
+    float* expValues = new float[inputsize];
     float expSum = 0.0f;
 
-    for (int i = 0; i < size; ++i) {
+    for (int i = 0; i < inputsize; ++i) {
         expValues[i] = expf(inputVector[i]);
         expSum += expValues[i];
     }
 
-    for (int i = 0; i < size; ++i) {
-        probabilities[i] = expValues[i] / expSum;
+    for (int i = 0; i < inputsize; ++i) {
+        outputVector[i] = expValues[i] / expSum;
     }
 
 }
 
 
-int main(){
+void sigmoid(float* inputVector, int inputSize, float* outputVector) {
+    for (int i = 0; i < inputSize; ++i) {
+        outputVector[i] = 1 / (1 + expf(-inputVector[i]));
+    }
+}
+
+
+int main(int argc, char *argv[]) {
+    
+    cout<<endl;
+    int task = atoi(argv[1]);
+
+    switch (task) {
+        case 1: {
+            // Task 1: Convolution
+        
+            int inputSize = atoi(argv[2]);
+            int kernelSize = atoi(argv[3]);
+            int paddingValue = atoi(argv[4]);
+            // Extract input values
+            float* inputmatrix = new float[inputSize*inputSize];
+            float* kernalmatrix = new float[kernelSize*kernelSize];
+            for (int i = 0; i < inputSize*inputSize; i++) {
+                inputmatrix[i] = atof(argv[i+5]);
+            }
+            for (int i = 0; i < kernelSize*kernelSize; i++) {
+                kernalmatrix[i] = atof(argv[i+5+inputSize*inputSize]);
+            }
+
+            // for (int i = 0; i < inputSize; ++i) {
+            //     for (int j = 0; j < inputSize; ++j) {
+            //         cout << inputmatrix[i * inputSize + j] << " ";
+            //     }cout << endl;
+            // }
+
+            // for (int i = 0; i < kernelSize; ++i) {
+            //     for (int j = 0; j < kernelSize; ++j) {
+            //         cout << kernalmatrix[i * kernelSize + j] << " ";
+            //     }cout << endl;
+            // }
+
+
+
+            int outputSize = inputSize - kernelSize + 1 + 2 * paddingValue;
+            float* outputmatrix = new float[outputSize*outputSize];
+
+            convolution(inputmatrix,inputSize,kernalmatrix,kernelSize,outputmatrix,paddingValue);
+
+            for (int i = 0; i < outputSize; ++i) {
+                for (int j = 0; j < outputSize; ++j) {
+                    cout << outputmatrix[i * outputSize + j] << " ";
+                }cout << endl;
+            }
+
+            break;
+        }
+        case 2: {
+
+            int type = atoi(argv[2]);
+
+            int N = atoi(argv[3]);
+            int M = atoi(argv[4]);
+            
+            // Extract input values
+            float* inputmatrix = new float[N*M];
+            for (int i = 0; i < N*M; i++) {
+                inputmatrix[i] = atof(argv[i+5]);
+            }
+
+            float* outputmatrix = new float[N*M];
+            if(type==0){
+                relu(inputmatrix,N,M,outputmatrix);
+            }
+            else{
+                tanh(inputmatrix,N,M,outputmatrix);
+            }
+
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < M; ++j) {
+                    cout << outputmatrix[i * N + j] << " ";
+                }cout << endl;
+            }
+            
+            break;
+        }
+        case 3: {
+            int type = atoi(argv[2]);
+
+            int inputSize = atoi(argv[3]);
+            int poolSize = atoi(argv[4]);
+            // Extract input values
+            float* inputmatrix = new float[inputSize];
+            for (int i = 0; i < inputSize*inputSize; i++) {
+                inputmatrix[i] = atof(argv[i+5]);
+            }
+            
+            int outputSize = inputSize/poolSize;
+            float* outputmatrix = new float[outputSize*outputSize];
+
+            if(type==0){
+                maxpool(inputmatrix,inputSize,poolSize,outputmatrix);
+            }
+            else{
+                avgpool(inputmatrix,inputSize,poolSize,outputmatrix);
+            }
+
+            for (int i = 0; i < outputSize; ++i) {
+                for (int j = 0; j < outputSize; ++j) {
+                    cout << outputmatrix[i * outputSize + j] << " ";
+                }cout << endl;
+            }
+
+            break;
+        }
+        case 4: {
+
+            int type = atoi(argv[2]);
+
+            int inputSize = argc - 3;
+            float *inputVector = new float[inputSize];
+            float *outputVector = new float[inputSize];
+
+            for (int i = 0; i < inputSize; ++i) {
+                inputVector[i] = atof(argv[i + 3]);
+            }
+
+            if(type==0){
+                sigmoid(inputVector, inputSize, outputVector);
+            }
+            else{
+                softmax(inputVector, inputSize, outputVector);
+            }
+
+            for (int i = 0; i < inputSize; ++i) {
+                cout << outputVector[i] << " ";   
+            }cout << endl;
+
+            break;
+        }
+        default:
+            cout << "Invalid task number!" << endl;
+            return 1;
+    }
 
     return 0;
 }
