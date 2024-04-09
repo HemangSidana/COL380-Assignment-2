@@ -102,8 +102,9 @@ __global__ void softmax(float* inputVector, int inputsize ,float* outputVector) 
 
 
 __global__ void sigmoid(float* inputVector, int inputSize, float* outputVector) {
-    for (int i = 0; i < inputSize; ++i) {
-        outputVector[i] = 1 / (1 + expf(-inputVector[i]));
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < inputSize) {
+        outputVector[idx] = 1 / (1 + expf(-inputVector[idx]));
     }
 }
 
@@ -120,35 +121,42 @@ int main(int argc, char *argv[]) {
             int paddingValue = atoi(argv[4]);
             // Extract input values
             float* inputmatrix = new float[inputSize*inputSize];
-            float* kernalmatrix = new float[kernelSize*kernelSize];
+            float* kernelmatrix = new float[kernelSize*kernelSize];
             int outputSize = inputSize - kernelSize + 1 + 2 * paddingValue;
             float* outputmatrix = new float[outputSize*outputSize];
             for (int i = 0; i < inputSize*inputSize; i++) {
                 inputmatrix[i] = atof(argv[i+5]);
             }
             for (int i = 0; i < kernelSize*kernelSize; i++) {
-                kernalmatrix[i] = atof(argv[i+5+inputSize*inputSize]);
+                kernelmatrix[i] = atof(argv[i+5+inputSize*inputSize]);
             }
 
-            float *device_inputmatrix, *device_kernalmatrix, *device_outputmatrix;
+            float *device_inputmatrix, *device_kernelmatrix, *device_outputmatrix;
             cudaMalloc((void**)&device_inputmatrix, inputSize*inputSize*sizeof(float));
-            cudaMalloc((void**)&device_kernalmatrix, kernelSize*kernelSize*sizeof(float));
+            cudaMalloc((void**)&device_kernelmatrix, kernelSize*kernelSize*sizeof(float));
             cudaMalloc((void**)&device_outputmatrix, outputSize*outputSize*sizeof(float));
 
             cudaMemcpy(device_inputmatrix, inputmatrix, inputSize*inputSize*sizeof(float), cudaMemcpyHostToDevice);
-            cudaMemcpy(device_kernalmatrix, kernalmatrix, kernelSize*kernelSize*sizeof(float), cudaMemcpyHostToDevice);
+            cudaMemcpy(device_kernelmatrix, kernelmatrix, kernelSize*kernelSize*sizeof(float), cudaMemcpyHostToDevice);
 
 
             // Launch convolution kernel
             dim3 threadsPerBlock(16, 16);
             dim3 numBlocks((outputSize + threadsPerBlock.x - 1) / threadsPerBlock.x,
                            (outputSize + threadsPerBlock.y - 1) / threadsPerBlock.y);
-            convolutionKernel<<<numBlocks, threadsPerBlock>>>(device_inputmatrix, inputSize, device_kernalmatrix, kernelSize,
+            convolutionKernel<<<numBlocks, threadsPerBlock>>>(device_inputmatrix, inputSize, device_kernelmatrix, kernelSize,
                                                                device_outputmatrix, paddingValue);
+            cudaMemcpy(outputmatrix,device_outputmatrix, outputSize*outputSize*sizeof(float), cudaMemcpyDeviceToHost);
 
             // Free allocated memory
+            for (int i = 0; i < outputSize; ++i) {
+                for (int j = 0; j < outputSize; ++j) {
+                    cout << outputmatrix[i * outputSize + j] << " ";
+                }cout << endl;
+            }
             cudaFree(device_inputmatrix);
-            cudaFree(device_kernalmatrix);
+            cudaFree(device_kernelmatrix);
+            cudaFree(device_outputmatrix);
 
             break;
         }
@@ -179,6 +187,15 @@ int main(int argc, char *argv[]) {
                 tanhKernel<<<(size + 255) / 256, 256>>>(device_inputmatrix, size, device_outputmatrix);
             }
 
+            cudaMemcpy(outputmatrix,device_outputmatrix, size*sizeof(float), cudaMemcpyDeviceToHost);
+
+            // Free allocated memory
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < M; ++j) {
+                    cout << outputmatrix[i * M + j] << " ";
+                }cout << endl;
+            }
+
 
             // Free allocated memory
             cudaFree(device_inputmatrix);
@@ -188,8 +205,8 @@ int main(int argc, char *argv[]) {
         }
         case 3: {
             int type = atoi(argv[2]);
-            int inputSize = atoi(argv[3]);
-            int poolSize = atoi(argv[4]);
+            int inputSize = atoi(argv[4]);
+            int poolSize = atoi(argv[3]);
             int outputSize = inputSize / poolSize;
 
             // Extract input values
@@ -204,17 +221,26 @@ int main(int argc, char *argv[]) {
             cudaMalloc((void**)&device_outputmatrix, outputSize*outputSize*sizeof(float));
 
             cudaMemcpy(device_inputmatrix, inputmatrix, inputSize*inputSize*sizeof(float), cudaMemcpyHostToDevice);
-
+            dim3 threadsPerBlock(16, 16);
+            dim3 numBlocks((outputSize + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                           (outputSize + threadsPerBlock.y - 1) / threadsPerBlock.y);
             if (type == 0) {
-                maxpoolKernel<<<(outputSize + 255) / 256, 256>>>(device_inputmatrix, inputSize, poolSize, device_outputmatrix);
+                maxpoolKernel<<<numBlocks,threadsPerBlock>>>(device_inputmatrix, inputSize, poolSize, device_outputmatrix);
             } else {
-                avgpoolKernel<<<(outputSize + 255) / 256, 256>>>(device_inputmatrix, inputSize, poolSize, device_outputmatrix);
+                avgpoolKernel<<<numBlocks,threadsPerBlock>>>(device_inputmatrix, inputSize, poolSize, device_outputmatrix);
             }
 
-            cudaDeviceSynchronize();
+            cudaMemcpy(outputmatrix,device_outputmatrix, outputSize*outputSize*sizeof(float), cudaMemcpyDeviceToHost);
 
-            cudaFree(inputMatrix);
-            cudaFree(outputMatrix);
+            // Free allocated memory
+            for (int i = 0; i < outputSize; ++i) {
+                for (int j = 0; j < outputSize; ++j) {
+                    cout << outputmatrix[i * outputSize + j] << " ";
+                }cout << endl;
+            }
+
+            cudaFree(device_inputmatrix);
+            cudaFree(device_outputmatrix);
 
             break;
         }
@@ -236,16 +262,21 @@ int main(int argc, char *argv[]) {
             cudaMemcpy(device_inputvector, inputVector, inputSize*sizeof(float), cudaMemcpyHostToDevice);
 
             if (type == 0) {
-                sigmoidKernel<<<(inputSize + 255) / 256, 256>>>(device_inputvector, inputSize, device_outputvector);
+                sigmoid<<<(inputSize + 255) / 256, 256>>>(device_inputvector, inputSize, device_outputvector);
             } else {
-                softmaxKernel<<<(inputSize + 255) / 256, 256>>>(device_inputvector, inputSize, device_outputvector);
+                softmax<<<(inputSize + 255) / 256, 256>>>(device_inputvector, inputSize, device_outputvector);
             }
 
-            cudaDeviceSynchronize();
+            cudaMemcpy(outputVector,device_outputvector, inputSize*sizeof(float), cudaMemcpyDeviceToHost);
 
             // Free allocated memory
-            cudaFree(inputVector);
-            cudaFree(outputVector);
+            for (int i = 0; i < inputSize; ++i) {
+                cout << outputVector[i] << " ";
+            }
+
+            // Free allocated memory
+            cudaFree(device_inputvector);
+            cudaFree(device_outputvector);
 
             break;
         }
