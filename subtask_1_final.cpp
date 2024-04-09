@@ -149,13 +149,13 @@ int main(int argc, char *argv[]) {
             //     for (int j = 0; j < inputSize; ++j) {
             //         cout << inputmatrix[i * inputSize + j] << " ";
             //     }cout << endl;
-            // }
+            // }cout << endl;
 
             // for (int i = 0; i < kernelSize; ++i) {
             //     for (int j = 0; j < kernelSize; ++j) {
             //         cout << kernalmatrix[i * kernelSize + j] << " ";
             //     }cout << endl;
-            // }
+            // }cout << endl;
 
 
 
@@ -164,11 +164,11 @@ int main(int argc, char *argv[]) {
 
             convolution(inputmatrix,inputSize,kernalmatrix,kernelSize,outputmatrix,paddingValue);
 
-            for (int i = 0; i < outputSize; ++i) {
-                for (int j = 0; j < outputSize; ++j) {
-                    cout << outputmatrix[i * outputSize + j] << " ";
-                }cout << endl;
-            }
+            // for (int i = 0; i < outputSize; ++i) {
+            //     for (int j = 0; j < outputSize; ++j) {
+            //         cout << outputmatrix[i * outputSize + j] << " ";
+            //     }cout << endl;
+            // }
 
             break;
         }
@@ -185,6 +185,7 @@ int main(int argc, char *argv[]) {
                 inputmatrix[i] = atof(argv[i+5]);
             }
 
+    
             float* outputmatrix = new float[N*M];
             if(type==0){
                 relu(inputmatrix,N,M,outputmatrix);
@@ -195,7 +196,7 @@ int main(int argc, char *argv[]) {
 
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < M; ++j) {
-                    cout << outputmatrix[i * N + j] << " ";
+                    cout << outputmatrix[i * M + j] << " ";
                 }cout << endl;
             }
             
@@ -203,17 +204,22 @@ int main(int argc, char *argv[]) {
         }
         case 3: {
             int type = atoi(argv[2]);
-
-            int inputSize = atoi(argv[3]);
-            int poolSize = atoi(argv[4]);
+            int poolSize = atoi(argv[3]);
+            int inputSize = atoi(argv[4]);
             // Extract input values
-            float* inputmatrix = new float[inputSize];
+            float* inputmatrix = new float[inputSize*inputSize];
             for (int i = 0; i < inputSize*inputSize; i++) {
                 inputmatrix[i] = atof(argv[i+5]);
             }
             
             int outputSize = inputSize/poolSize;
             float* outputmatrix = new float[outputSize*outputSize];
+
+            for (int i = 0; i < inputSize; ++i) {
+                for (int j = 0; j < inputSize; ++j) {
+                    cout << inputmatrix[i * inputSize + j] << " ";
+                }cout << endl;
+            }cout << endl;
 
             if(type==0){
                 maxpool(inputmatrix,inputSize,poolSize,outputmatrix);
